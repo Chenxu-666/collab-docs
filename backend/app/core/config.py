@@ -10,6 +10,9 @@ def _get(key: str, default: str = "") -> str:
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 
 DATABASE_URL = _get("DATABASE_URL", "sqlite:///./collab_docs.db")
+# Railway MySQL 插件的 MYSQL_URL 形如 mysql://...，SQLAlchemy 需显式指定 pymysql 驱动
+if DATABASE_URL.startswith("mysql://"):
+    DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
 _DEV_JWT_SECRET = "dev-only-insecure-secret-change-me-in-production-1234567890"
 JWT_SECRET = _get("JWT_SECRET", _DEV_JWT_SECRET)
 JWT_ALGORITHM = "HS256"
