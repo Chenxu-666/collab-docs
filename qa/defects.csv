@@ -1,0 +1,5 @@
+﻿id,title,module,severity,status,repro_steps,expected,actual,found_by,found_date,env,note
+DEFECT-001,避坑项关联图片ID传非数字字符串导致500,pitfalls,P2,open,"管理员登录后 POST /api/v1/pitfalls 传 related_image_ids 含非数字元素（如 abc）",应返回 400 参数校验错误,实际返回 500（int() 抛 ValueError）,QA自动化,2026-11-06,FastAPI/SQLite,create_pitfall 与 update_pitfall 均受影响
+DEFECT-002,编辑器配置接口无条件崩溃（doc.name 字段不存在）,onlyoffice,P1,open,"GET /api/v1/onlyoffice/documents/{id}/editor-config（无需配置 ONLYOFFICE 即可复现）",应返回 200 编辑器配置或降级提示,实际返回 500（AttributeError：Document 无 name 字段）,QA自动化,2026-11-06,FastAPI/SQLite,editor_config 无条件调用 _build_config 且第32行 doc.name 应为 doc.title 导致任何配置下均 500
+建议-001,library模块路由缺少 /library 前缀,library,P4,open,观察 library.py 的 APIRouter 未设置 prefix,应与其他模块一致使用 /api/v1/library/*,当前为 /api/v1/albums 等,QA代码审查,2026-11-06,,前后端当前一致可用 属架构约定瑕疵
+建议-002,JWT_SECRET 默认值过短,security,P3,open,观察 config.py 默认 JWT_SECRET,生产应配置不小于 32 字节强密钥,默认 dev-secret-please-change 仅 24 字节触发 PyJWT 警告,QA代码审查,2026-11-06,,
