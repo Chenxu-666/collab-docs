@@ -1,5 +1,4 @@
 """pitfalls 模块测试：创建校验、状态机、游客可见性、输入健壮性。"""
-import pytest
 
 
 def test_create_requires_title(client, admin_headers):
@@ -57,7 +56,6 @@ def test_trash_restore(client, admin_headers):
     assert r.json()["status"] == "draft"
 
 
-@pytest.mark.xfail(reason="DEFECT-001: related_image_ids 传非数字字符串时 int() 抛 ValueError 返回 500，应返回 400", strict=True)
 def test_related_ids_non_numeric_should_400(client, admin_headers):
     """输入健壮性：非数字关联 ID 应返回 400 而非 500。"""
     r = client.post("/api/v1/pitfalls", json={

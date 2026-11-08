@@ -25,6 +25,15 @@ def _ids(raw: str) -> list[int]:
         return []
 
 
+def _related_ids(raw) -> list[int]:
+    if not isinstance(raw, list):
+        raise HTTPException(400, "关联 ID 必须是数组")
+    try:
+        return [int(x) for x in raw if x]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "关联 ID 必须为数字")
+
+
 def _pit_out(p: Pitfall, db: Session, admin: bool) -> dict:
     rel_imgs, rel_docs = [], []
     if p.related_image_ids:
@@ -124,8 +133,8 @@ def create_pitfall(body: dict, admin: User = Depends(require_admin),
         advice=advice,
         risk_level=risk,
         source_text=(body.get("source_text") or "").strip()[:500],
-        related_image_ids=json.dumps([int(x) for x in body.get("related_image_ids", []) if x]),
-        related_document_ids=json.dumps([int(x) for x in body.get("related_document_ids", []) if x]),
+        related_image_ids=json.dumps(_related_ids(body.get("related_image_ids", []))),
+        related_document_ids=json.dumps(_related_ids(body.get("related_document_ids", []))),
         status=STATUS_DRAFT,
         sort_order=int(body.get("sort_order", 0)),
         is_pinned=bool(body.get("is_pinned", False)),
@@ -151,9 +160,9 @@ def update_pitfall(pit_id: int, body: dict, admin: User = Depends(require_admin)
     if "risk_level" in body and body["risk_level"] in RISK_LEVELS:
         p.risk_level = body["risk_level"]
     if "related_image_ids" in body:
-        p.related_image_ids = json.dumps([int(x) for x in body["related_image_ids"] if x])
+        p.related_image_ids = json.dumps(_related_ids(body["related_image_ids"]))
     if "related_document_ids" in body:
-        p.related_document_ids = json.dumps([int(x) for x in body["related_document_ids"] if x])
+        p.related_document_ids = json.dumps(_related_ids(body["related_document_ids"]))
     if "sort_order" in body:
         p.sort_order = int(body["sort_order"])
     if "is_pinned" in body:

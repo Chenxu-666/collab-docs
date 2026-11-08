@@ -1,7 +1,8 @@
 import axios from 'axios'
 import router from '@/router'
 
-const api = axios.create({ baseURL: '/api/v1', timeout: 30000 })
+const apiBaseURL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+const api = axios.create({ baseURL: `${apiBaseURL}/api/v1`, timeout: 30000 })
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('cd_token')

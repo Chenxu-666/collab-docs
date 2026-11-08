@@ -79,6 +79,21 @@ docker compose up -d
 - 默认 SQLite（`backend/collab_docs.db`），零依赖可直接跑通
 - 生产环境切换 MySQL：设置 `DATABASE_URL=mysql+pymysql://user:pass@host:3306/collab_docs`
 
+## Railway + Vercel 部署
+
+### 后端（Railway）
+
+- 服务根目录设置为 `backend`，使用其中的 `Dockerfile` 构建；启动命令会读取 Railway 注入的 `PORT`。
+- 配置 `DATABASE_URL`、`ENV=prod`、长度不少于 32 字符的随机 `JWT_SECRET`、`FILE_ROOT=/app/data/files` 与 `CORS_ORIGINS`。
+- `CORS_ORIGINS` 填写 Vercel 正式域名，多个域名用英文逗号分隔，不要填写路径或末尾斜杠。
+- 健康检查路径为 `/api/health`；上传文件目录必须挂载持久化 Volume。
+
+### 前端（Vercel）
+
+- 项目根目录设置为 `frontend`，构建命令为 `npm run build`，输出目录为 `dist`。
+- 配置 `VITE_API_BASE_URL=https://你的后端域名.up.railway.app`，只填后端域名，不要在末尾添加 `/api/v1`。
+- 本地开发不设置该变量，前端会继续通过 Vite 代理访问 `http://localhost:8000`。
+
 ## 技术栈
 
 前端 Vite + Vue3 + TS + Pinia + Vue Router ｜ 后端 FastAPI + SQLAlchemy 2.0 + PyJWT ｜ 文档服务 OnlyOffice（可选）｜ 存储本地盘（预留 MinIO）

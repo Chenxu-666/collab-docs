@@ -29,7 +29,7 @@ def _build_config(user: User, doc: Document) -> dict:
         "document": {
             "fileType": "docx",
             "key": key,
-            "title": f"{doc.name}.docx",
+            "title": f"{doc.title}.docx",
             "url": content_url,
         },
         "documentType": "word",
@@ -53,12 +53,11 @@ def editor_config(doc_id: int, user: User = Depends(get_current_user), db: Sessi
     doc = db.get(Document, doc_id)
     if doc is None or doc.status == "trashed":
         raise HTTPException(404, "文档不存在")
-    config = _build_config(user, doc)
     if not ONLYOFFICE_URL:
         return {"available": False, "mode": "edit" if _is_editor(user) else "view",
                 "doc": {"id": doc.id, "name": doc.title, "version": doc.current_version}}
     return {"available": True, "onlyoffice_url": ONLYOFFICE_URL,
-            "mode": "edit" if _is_editor(user) else "view", "config": config}
+            "mode": "edit" if _is_editor(user) else "view", "config": _build_config(user, doc)}
 
 
 @router.post("/callback")
