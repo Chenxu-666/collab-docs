@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '@/api'
+import { publicApi } from '@/api'
 
 const router = useRouter()
 const q = ref('')
@@ -12,19 +12,18 @@ const thumbs = ref<Record<number, string>>({})
 
 async function load() {
   try {
-    const [d, im, p] = await Promise.all([
-      api.get('/documents'), api.get('/images'), api.get('/pitfalls')
+    const [d, im, p] = await Promise.allSettled([
+      publicApi.get('/documents'), publicApi.get('/images'), publicApi.get('/pitfalls')
     ])
-    docs.value = d.data.slice(0, 6)
-    images.value = im.data.slice(0, 8)
-    pitfalls.value = p.data.filter((x: any) => x.is_pinned).slice(0, 4)
-    images.value.forEach((img: any) => loadThumb(img))
+    if (d.status === 'fulfilled') docs.value = d.value.data.slice(0, 6)
+    if (im.status === 'fulfilled') { images.value = im.value.data.slice(0, 8); images.value.forEach((img: any) => loadThumb(img)) }
+    if (p.status === 'fulfilled') pitfalls.value = p.value.data.filter((x: any) => x.is_pinned).slice(0, 4)
   } catch { /* ignore */ }
 }
 
 async function loadThumb(img: any) {
   try {
-    const res = await api.get(`/images/${img.id}/thumb`, { responseType: 'blob' })
+    const res = await publicApi.get(`/images/${img.id}/thumb`, { responseType: 'blob' })
     thumbs.value[img.id] = URL.createObjectURL(res.data)
   } catch { /* ignore */ }
 }

@@ -6,3 +6,4 @@ PyJWT>=2.8
 python-multipart>=0.0.9
 Pillow>=10.0
 pymysql>=1.1
+python-dotenv>=1.0

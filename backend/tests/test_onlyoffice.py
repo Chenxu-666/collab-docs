@@ -1,9 +1,10 @@
 """onlyoffice 模块测试：编辑器配置接口。"""
+from app.services.docx import make_minimal_docx
 
 
 def _upload(client, headers):
     return client.post("/api/v1/documents",
-                       files={"file": ("协同文档.docx", b"docx-bytes", "application/octet-stream")},
+                       files={"file": ("协同文档.docx", make_minimal_docx("协同内容"), "application/octet-stream")},
                        headers=headers).json()["id"]
 
 

@@ -1,8 +1,13 @@
 """audit 模块测试：审计记录、只增不删、访问控制、过滤。"""
+from app.services.docx import make_minimal_docx
+
+
+def _docx(name: str):
+    return {"file": (name, make_minimal_docx("审计内容"), "application/octet-stream")}
 
 
 def test_upload_records_audit(client, admin_headers):
-    client.post("/api/v1/documents", files={"file": ("审计测试.docx", b"x", "application/octet-stream")}, headers=admin_headers)
+    client.post("/api/v1/documents", files=_docx("审计测试.docx"), headers=admin_headers)
     logs = client.get("/api/v1/audit-logs", headers=admin_headers).json()
     actions = [l["action"] for l in logs]
     assert "upload" in actions
@@ -20,7 +25,7 @@ def test_user_cannot_read_audit(client, user_headers):
 
 def test_audit_append_only(client, admin_headers):
     """删除操作后，历史审计日志仍保留（只增不删）。"""
-    doc_id = client.post("/api/v1/documents", files={"file": ("留痕.docx", b"x", "application/octet-stream")}, headers=admin_headers).json()["id"]
+    doc_id = client.post("/api/v1/documents", files=_docx("留痕.docx"), headers=admin_headers).json()["id"]
     client.delete(f"/api/v1/documents/{doc_id}", headers=admin_headers)
     logs = client.get("/api/v1/audit-logs", headers=admin_headers).json()
     actions = [l["action"] for l in logs]
@@ -34,6 +39,6 @@ def test_login_failed_recorded(client, admin_headers):
 
 
 def test_filter_by_action(client, admin_headers):
-    client.post("/api/v1/documents", files={"file": ("过滤.docx", b"x", "application/octet-stream")}, headers=admin_headers)
+    client.post("/api/v1/documents", files=_docx("过滤.docx"), headers=admin_headers)
     logs = client.get("/api/v1/audit-logs", params={"action": "upload"}, headers=admin_headers).json()
     assert all(l["action"] == "upload" for l in logs)

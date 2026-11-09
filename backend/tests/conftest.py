@@ -63,11 +63,17 @@ def admin_headers(client):
 
 @pytest.fixture
 def user_headers(client, super_headers):
-    """创建一个已审批的普通用户并登录。"""
+    """创建一个已审批的普通用户并登录（首次登录后完成强制改密）。"""
     r = client.post(
         "/api/v1/accounts/single",
         json={"username": "qa_user", "display_name": "测试用户"},
         headers=super_headers,
     )
     assert r.status_code == 200, f"创建普通用户失败: {r.text}"
+    initial_pwd = r.json()["created"][0]["initial_password"]
+    headers = _login(client, "qa_user", initial_pwd)
+    r = client.post("/api/v1/auth/change-password",
+                    json={"old_password": initial_pwd, "new_password": "qa_user@123"},
+                    headers=headers)
+    assert r.status_code == 200, f"强制改密失败: {r.text}"
     return _login(client, "qa_user", "qa_user@123")

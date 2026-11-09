@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import api from '@/api'
+import { publicApi } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,7 +11,7 @@ const err = ref('')
 
 onMounted(async () => {
   try {
-    const { data } = await api.get(`/documents/${route.params.id}/preview`)
+    const { data } = await publicApi.get(`/documents/${route.params.id}/preview`)
     doc.value = data
   } catch (e: any) {
     err.value = e.message || '加载失败'

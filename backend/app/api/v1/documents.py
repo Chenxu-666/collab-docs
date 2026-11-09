@@ -14,12 +14,14 @@ from ...models import (
     Document, DocumentVersion, User,
 )
 from ...services.audit import record_audit
-from ...services.docx import extract_text, make_minimal_docx
+from ...services.docx import extract_pdf_text, extract_text, make_minimal_docx
 from ...storage.backend import storage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-ALLOWED_EXT = {"docx", "doc", "wps", "pdf"}
+# doc/wps 需要真实转换服务（LibreOffice/OnlyOffice），当前未接入，暂不支持上传，
+# 避免生成误导性的“转换说明”占位文档。
+ALLOWED_EXT = {"docx", "pdf"}
 
 
 def _doc_out(d: Document) -> dict:
@@ -38,6 +40,12 @@ def _ver_out(v: DocumentVersion) -> dict:
         "created_at": v.created_at.isoformat(),
         "operator_name": v.operator.display_name if v.operator else "",
     }
+
+
+def _allocate_version(db: Session, doc: Document) -> int:
+    """原子分配下一个版本号，避免并发回滚/回调产生重复版本。"""
+    db.refresh(doc, with_for_update=True)
+    return doc.current_version + 1
 
 
 @router.get("")
@@ -110,10 +118,26 @@ def upload_document(
         name, ext = filename, "docx"
     ext = ext.lower()
     if ext not in ALLOWED_EXT:
-        raise HTTPException(400, "仅支持 docx / doc / wps / pdf 格式")
+        raise HTTPException(400, "仅支持 docx / pdf 格式（doc/wps 请先另存为 docx）")
     raw = file.file.read()
     if len(raw) > 100 * 1024 * 1024:
         raise HTTPException(400, "文件超过 100MB 上限")
+    if ext == "docx":
+        try:
+            import zipfile
+            from io import BytesIO
+            with zipfile.ZipFile(BytesIO(raw)) as z:
+                z.read("word/document.xml")
+        except Exception:
+            raise HTTPException(400, "不是有效的 docx 文件")
+    else:  # pdf
+        if not raw[:5].startswith(b"%PDF-"):
+            raise HTTPException(400, "不是有效的 PDF 文件")
+
+    if folder_id is not None:
+        from ...models import Folder
+        if db.get(Folder, folder_id) is None:
+            raise HTTPException(400, "指定的分类不存在")
 
     doc = Document(
         title=name, ext=ext, folder_id=folder_id, current_version=1,
@@ -124,16 +148,8 @@ def upload_document(
 
     storage.save(f"documents/{doc.id}/original.{ext}", raw)
 
-    # 生成 v1 可编辑快照：docx 直接用原内容，其余转 docx 工作副本
-    if ext == "docx":
-        v1_bytes = raw
-    elif ext == "pdf":
-        v1_bytes = raw
-    else:
-        v1_bytes = make_minimal_docx(
-            f"【转换说明】\n\n原文件《{name}.{ext}》已上传。\n\n"
-            "部署 OnlyOffice 后系统将自动转换为 docx 以支持在线协同编辑，原件可在版本历史中下载。"
-        )
+    # v1 工作副本：docx 与 pdf 均直接使用原内容，保证预览/下载一致。
+    v1_bytes = raw
     work_ext = "pdf" if ext == "pdf" else "docx"
     storage.save(f"documents/{doc.id}/versions/v1.{work_ext}", v1_bytes)
     db.add(DocumentVersion(document_id=doc.id, version_no=1,
@@ -142,6 +158,8 @@ def upload_document(
 
     if ext == "docx":
         doc.summary = extract_text(raw)[:200]
+    else:
+        doc.summary = extract_pdf_text(raw)[:200]
 
     record_audit(db, admin, "upload", "document", doc.id, f"{name}.{ext}",
                  detail={"size": len(raw)}, ip=request.client.host if request else "")
@@ -201,7 +219,8 @@ def preview_document(doc_id: int, user: User | None = Depends(get_current_user_o
     admin = user is not None and user.role in ("admin", "super_admin")
     if not admin and doc.status != STATUS_PUBLISHED:
         raise HTTPException(404, "文档不存在或未发布")
-    version = doc.published_version_no or doc.current_version
+    # 普通用户只能看已发布版本；管理员默认预览当前工作版本。
+    version = doc.current_version if admin else (doc.published_version_no or doc.current_version)
     v = db.execute(
         select(DocumentVersion).where(
             DocumentVersion.document_id == doc_id, DocumentVersion.version_no == version
@@ -209,14 +228,16 @@ def preview_document(doc_id: int, user: User | None = Depends(get_current_user_o
     ).scalar_one_or_none()
     text = ""
     if v is not None:
-        text = extract_text(storage.read(v.file_path))
+        data = storage.read(v.file_path)
+        text = extract_pdf_text(data) if doc.ext == "pdf" else extract_text(data)
     return {"id": doc.id, "title": doc.title, "ext": doc.ext, "status": doc.status,
             "summary": doc.summary, "version": version, "text": text,
             "updated_at": doc.updated_at.isoformat()}
 
 
 @router.get("/{doc_id}/content")
-def get_content(doc_id: int, token: str = "", version: int = 1):
+def get_content(doc_id: int, token: str = "", version: int | None = None,
+                db: Session = Depends(get_db)):
     """OnlyOffice 服务器拉取文件（短期 token，无需登录）。"""
     try:
         payload = verify_content_token(token)
@@ -224,7 +245,15 @@ def get_content(doc_id: int, token: str = "", version: int = 1):
         raise HTTPException(403, "无效的访问令牌")
     if payload.get("doc_id") != doc_id:
         raise HTTPException(403, "令牌与文档不匹配")
-    v = version if version else payload.get("version", 1)
+    token_version = int(payload.get("version", 1))
+    if version is not None and version != token_version:
+        raise HTTPException(403, "版本与令牌不匹配")
+    v = token_version
+    doc = db.get(Document, doc_id)
+    if doc is None or doc.status == STATUS_TRASHED:
+        raise HTTPException(404, "文档不存在")
+    if payload.get("access") == "published" and doc.status != STATUS_PUBLISHED:
+        raise HTTPException(404, "文档不存在或未发布")
     for ext in ("docx", "pdf"):
         path = f"documents/{doc_id}/versions/v{v}.{ext}"
         if storage.exists(path):
@@ -246,9 +275,10 @@ def rollback(doc_id: int, version_no: int, admin: User = Depends(require_admin),
     ).scalar_one_or_none()
     if src is None:
         raise HTTPException(404, "版本不存在")
-    new_no = doc.current_version + 1
     data = storage.read(src.file_path)
     fext = src.file_path.rsplit(".", 1)[-1] if "." in src.file_path else "docx"
+
+    new_no = _allocate_version(db, doc)
     storage.save(f"documents/{doc_id}/versions/v{new_no}.{fext}", data)
     db.add(DocumentVersion(document_id=doc_id, version_no=new_no,
                           file_path=f"documents/{doc_id}/versions/v{new_no}.{fext}",
@@ -271,6 +301,9 @@ def update_document(doc_id: int, body: dict, admin: User = Depends(require_admin
     if "title" in body and body["title"].strip():
         doc.title = body["title"].strip()
     if "folder_id" in body:
+        from ...models import Folder
+        if body["folder_id"] is not None and db.get(Folder, body["folder_id"]) is None:
+            raise HTTPException(400, "指定的分类不存在")
         doc.folder_id = body["folder_id"]
     if "summary" in body:
         doc.summary = (body["summary"] or "")[:500]
@@ -360,6 +393,15 @@ def permanent_delete(doc_id: int, admin: User = Depends(require_super_admin),
     name = f"{doc.title}.{doc.ext}"
     record_audit(db, admin, "permanent_delete", "document", doc_id, name,
                  ip=request.client.host if request else "")
+    # 收集需要清理的物理文件路径，数据库提交后再删除，失败不阻塞删除结果。
+    rel_paths = {f"documents/{doc.id}/original.{doc.ext}"}
+    for v in doc.versions:
+        rel_paths.add(v.file_path)
     db.delete(doc)
     db.commit()
+    for rel in rel_paths:
+        try:
+            storage.delete(rel)
+        except Exception:
+            pass
     return {"message": "已彻底删除"}

@@ -42,9 +42,10 @@ def test_batch_create(client, super_headers):
     ]}, headers=super_headers)
     assert r.status_code == 200
     assert len(r.json()["created"]) == 2
-    # 初始密码 username@123，首次登录须改密
+    # 初始密码为随机生成，仅在下发时可见一次
     created = r.json()["created"][0]
-    assert created["initial_password"] == "batch1@123"
+    assert created["initial_password"]
+    assert created["initial_password"] != "batch1@123"
 
 
 def test_create_admin_account(client, super_headers):
@@ -54,12 +55,13 @@ def test_create_admin_account(client, super_headers):
 
 
 def test_disable_account_cannot_login(client, super_headers):
-    client.post("/api/v1/accounts/single", json={"username": "todisable", "display_name": "停用"}, headers=super_headers)
+    created = client.post("/api/v1/accounts/single", json={"username": "todisable", "display_name": "停用"}, headers=super_headers).json()
+    initial_pwd = created["created"][0]["initial_password"]
     accounts = client.get("/api/v1/accounts", headers=super_headers).json()
     uid = [u for u in accounts if u["username"] == "todisable"][0]["id"]
     r = client.patch(f"/api/v1/accounts/{uid}", json={"status": "disabled"}, headers=super_headers)
     assert r.status_code == 200
-    login = client.post("/api/v1/auth/login", json={"username": "todisable", "password": "todisable@123"})
+    login = client.post("/api/v1/auth/login", json={"username": "todisable", "password": initial_pwd})
     assert login.status_code == 403
 
 
@@ -75,6 +77,7 @@ def test_reset_password_forces_change(client, super_headers):
     accounts = client.get("/api/v1/accounts", headers=super_headers).json()
     uid = [u for u in accounts if u["username"] == "resetme"][0]["id"]
     client.patch(f"/api/v1/accounts/{uid}", json={"reset_password": True}, headers=super_headers)
-    login = client.post("/api/v1/auth/login", json={"username": "resetme", "password": "resetme@123"})
-    assert login.status_code == 200
-    assert login.json()["must_change_pwd"] is True
+    # 重置后账号被标记为需强制改密（密码已随机化，无法再按旧密码登录）
+    accounts = client.get("/api/v1/accounts", headers=super_headers).json()
+    u = [u for u in accounts if u["username"] == "resetme"][0]
+    assert u["must_change_pwd"] is True

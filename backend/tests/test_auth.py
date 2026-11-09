@@ -47,11 +47,12 @@ def test_login_rejected_403(client, super_headers):
 
 def test_login_disabled_403(client, super_headers):
     """停用账号登录返回 403。"""
-    client.post("/api/v1/accounts/single", json={"username": "disableduser", "display_name": "停用"}, headers=super_headers)
+    created = client.post("/api/v1/accounts/single", json={"username": "disableduser", "display_name": "停用"}, headers=super_headers).json()
+    initial_pwd = created["created"][0]["initial_password"]
     accounts = client.get("/api/v1/accounts", headers=super_headers).json()
     uid = [u for u in accounts if u["username"] == "disableduser"][0]["id"]
     client.patch(f"/api/v1/accounts/{uid}", json={"status": "disabled"}, headers=super_headers)
-    r = client.post("/api/v1/auth/login", json={"username": "disableduser", "password": "disableduser@123"})
+    r = client.post("/api/v1/auth/login", json={"username": "disableduser", "password": initial_pwd})
     assert r.status_code == 403
 
 

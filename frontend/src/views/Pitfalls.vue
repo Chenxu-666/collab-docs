@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import api from '@/api'
+import { publicApi } from '@/api'
 
 const pitfalls = ref<any[]>([])
 const q = ref('')
@@ -16,7 +16,7 @@ const riskClass: Record<string, string> = { high: 'badge-red', medium: 'badge-am
 
 async function load() {
   try {
-    const { data } = await api.get('/pitfalls', { params: { q: q.value, stage: stage.value, category: category.value, risk: risk.value } })
+    const { data } = await publicApi.get('/pitfalls', { params: { q: q.value, stage: stage.value, category: category.value, risk: risk.value } })
     pitfalls.value = data
   } catch { /* ignore */ }
 }

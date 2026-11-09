@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import api from '@/api'
+import { publicApi } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,7 +14,7 @@ const loading = ref(true)
 async function load() {
   loading.value = true
   try {
-    const { data } = await api.get('/documents', { params: { q: q.value, folder_id: folderId.value || undefined } })
+    const { data } = await publicApi.get('/documents', { params: { q: q.value, folder_id: folderId.value || undefined } })
     docs.value = data
   } catch { /* ignore */ } finally { loading.value = false }
 }
@@ -22,7 +22,7 @@ async function load() {
 onMounted(async () => {
   await load()
   try {
-    const { data } = await api.get('/documents/folders')
+    const { data } = await publicApi.get('/documents/folders')
     folders.value = data
   } catch { /* ignore */ }
 })

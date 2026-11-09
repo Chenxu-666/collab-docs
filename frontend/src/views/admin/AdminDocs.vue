@@ -17,6 +17,7 @@ const showUpload = ref(false)
 const upFile = ref<File | null>(null)
 const upFolder = ref('')
 const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const showVer = ref(false)
 const versions = ref<any[]>([])
@@ -61,7 +62,7 @@ async function doUpload() {
     const fd = new FormData()
     fd.append('file', upFile.value)
     if (upFolder.value) fd.append('folder_id', upFolder.value)
-    await api.post('/documents', fd)
+    await api.post('/documents', fd, { timeout: 0 })
     ui.toast('上传成功（草稿状态，发布后公开）')
     showUpload.value = false
     upFile.value = null
@@ -83,7 +84,7 @@ async function rollback(v: any) {
 }
 async function download(d: any) {
   try {
-    const res = await api.get(`/documents/${d.id}/download`, { responseType: 'blob' })
+    const res = await api.get(`/documents/${d.id}/download`, { responseType: 'blob', timeout: 0 })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url; a.download = `${d.title}.${d.ext}`; a.click(); URL.revokeObjectURL(url)
@@ -96,7 +97,8 @@ async function act(d: any, action: string) {
   if (action === 'trash' && !confirm(`确认删除文档「${d.title}」？删除后进入回收站，用户端将不可见。`)) return
   try {
     const method = action === 'trash' ? 'delete' : 'post'
-    await api[method](`/documents/${d.id}/${action === 'trash' ? '' : action}`)
+    const url = action === 'trash' ? `/documents/${d.id}` : `/documents/${d.id}/${action}`
+    await api[method](url)
     ui.toast(`${map[action]}成功`)
     await load()
   } catch (e: any) { ui.toast(e.message, 'error') }
@@ -184,12 +186,12 @@ async function saveEdit() {
       <div class="modal">
         <div class="modal-head"><b>上传文档</b><button class="icon-btn" @click="showUpload = false">✕</button></div>
         <div class="modal-body">
-          <div class="up-zone" @click="$refs.fileInput.click()">
+          <div class="up-zone" @click="fileInput?.click()">
             <span class="big">📄</span>
             <div>{{ upFile ? upFile.name : '点击选择文件上传' }}</div>
-            <div class="fmt">支持 docx / doc / wps / pdf，单文件 ≤ 100MB</div>
+            <div class="fmt">支持 docx / pdf，单文件 ≤ 100MB</div>
           </div>
-          <input ref="fileInput" type="file" accept=".docx,.doc,.wps,.pdf" style="display:none" @change="onPickFile" />
+          <input ref="fileInput" type="file" accept=".docx,.pdf" style="display:none" @change="onPickFile" />
           <div class="field" style="margin-top:16px">
             <label>文档分类</label>
             <select v-model="upFolder" class="select">

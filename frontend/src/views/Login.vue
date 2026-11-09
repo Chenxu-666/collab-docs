@@ -12,12 +12,15 @@ const ui = useUiStore()
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
+// 演示账号一键登录仅在开发环境显示，生产构建会自动剔除。
+const isDev = import.meta.env.DEV
 
 async function doLogin(u: string, p: string) {
   loading.value = true
   try {
-    await userStore.login(u, p)
+    const data = await userStore.login(u, p)
     ui.toast('登录成功，欢迎回来')
+    if (data.must_change_pwd) { router.push({ name: 'change-password' }); return }
     const redirect = (route.query.redirect as string) || (userStore.isAdmin ? '/admin/dashboard' : '/home')
     router.push(redirect)
   } catch (e: any) {
@@ -51,7 +54,7 @@ function submit() { doLogin(username.value, password.value) }
         </button>
       </form>
 
-      <div class="demo-row">
+      <div v-if="isDev" class="demo-row">
         <button class="demo-btn" @click="doLogin('001', 'WENjing970217')">超级管理员 001</button>
         <button class="demo-btn" @click="doLogin('002', 'WENjing521')">管理员 002</button>
       </div>

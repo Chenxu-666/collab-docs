@@ -68,7 +68,8 @@ async function act(p: any, action: string) {
   if (action === 'trash' && !confirm(`确认删除避坑项「${p.title}」？将进入回收站。`)) return
   try {
     const method = action === 'trash' ? 'delete' : 'post'
-    await api[method](`/pitfalls/${p.id}/${action === 'trash' ? '' : action}`)
+    const url = action === 'trash' ? `/pitfalls/${p.id}` : `/pitfalls/${p.id}/${action}`
+    await api[method](url)
     ui.toast(action === 'publish' ? '已发布' : action === 'withdraw' ? '已撤回' : '已删除')
     await load()
   } catch (e: any) { ui.toast(e.message, 'error') }

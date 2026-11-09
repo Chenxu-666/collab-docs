@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { useUserStore } from '@/stores/user'
@@ -14,6 +14,7 @@ const docId = route.params.id as string
 const loading = ref(true)
 const cfg = ref<any>(null)
 const editorRef = ref<HTMLElement | null>(null)
+const editorError = ref(false)
 let editorInstance: any = null
 const isEditable = ref(false)
 
@@ -32,10 +33,15 @@ onMounted(async () => {
 
 function loadOnlyOffice(data: any): Promise<void> {
   return new Promise((resolve) => {
-    const init = () => {
+    const init = async () => {
+      await nextTick()
       const DocsAPI = (window as any).DocsAPI
-      if (!DocsAPI || !editorRef.value) { resolve(); return }
-      editorInstance = new DocsAPI.DocEditor(editorRef.value.id, data.config, { width: '100%', height: '100%' })
+      if (!DocsAPI || !editorRef.value) { editorError.value = true; resolve(); return }
+      try {
+        editorInstance = new DocsAPI.DocEditor(editorRef.value.id, data.config)
+      } catch (e) {
+        editorError.value = true
+      }
       resolve()
     }
     if ((window as any).DocsAPI) { init(); return }
@@ -43,17 +49,20 @@ function loadOnlyOffice(data: any): Promise<void> {
     script.setAttribute('data-oo', '1')
     script.src = `${data.onlyoffice_url}/web-apps/apps/api/documents/api.js`
     script.onload = init
-    script.onerror = () => { ui.toast('OnlyOffice 编辑器加载失败', 'error'); resolve() }
+    script.onerror = () => { ui.toast('OnlyOffice 编辑器加载失败', 'error'); editorError.value = true; resolve() }
     document.head.appendChild(script)
   })
 }
 
 async function download() {
   try {
-    const res = await api.get(`/documents/${docId}/download`, { responseType: 'blob' })
+    const res = await api.get(`/documents/${docId}/download`, { responseType: 'blob', timeout: 0 })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
-    a.href = url; a.download = `${cfg.value?.doc?.name || '文档'}.docx`; a.click(); URL.revokeObjectURL(url)
+    a.href = url
+    a.download = `${cfg.value?.doc?.name || '文档'}.${cfg.value?.doc?.work_ext || 'docx'}`
+    a.click()
+    URL.revokeObjectURL(url)
     ui.toast('下载成功，已写入审计日志')
   } catch (e: any) { ui.toast(e.message, 'error') }
 }
@@ -77,7 +86,7 @@ onBeforeUnmount(() => { if (editorInstance) { try { editorInstance.destroyEditor
       </div>
 
       <div class="editor-body">
-        <div v-if="cfg?.available" id="oo-editor" ref="editorRef" style="flex:1;min-height:0"></div>
+        <div v-if="cfg?.available && !editorError" id="oo-editor" ref="editorRef" style="flex:1;min-height:0"></div>
         <div v-else class="editor-canvas" style="flex:1">
           <div style="max-width:520px;margin:0 auto;text-align:center;padding-top:60px">
             <div style="font-size:54px;margin-bottom:18px">📝</div>

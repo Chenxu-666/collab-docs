@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...core.deps import require_super_admin
-from ...core.security import hash_password
+from ...core.security import hash_password, random_password
 from ...db import get_db
 from ...models import ROLE_ADMIN, ROLE_SUPER_ADMIN, ROLE_USER, USER_ACTIVE, USER_DISABLED, USER_PENDING, USER_REJECTED, User
 from ...schemas import AccountCreate, BatchAccountCreate, UserOut
@@ -72,7 +72,7 @@ def batch_create(
         exists = db.execute(select(User).where(User.username == uname)).scalar_one_or_none()
         if exists:
             continue
-        initial_pwd = uname + "@123"
+        initial_pwd = random_password()
         u = User(
             username=uname,
             display_name=item.display_name.strip() or uname,
@@ -142,7 +142,7 @@ def update_account(account_id: int, body: dict,
     if "role" in body and body["role"] in (ROLE_USER, ROLE_ADMIN):
         u.role = body["role"]
     if body.get("reset_password"):
-        u.password_hash = hash_password(u.username + "@123")
+        u.password_hash = hash_password(random_password())
         u.must_change_pwd = True
     record_audit(db, admin, "account_op", "account", account_id, u.username,
                  detail={"op": "update", "patch": {k: v for k, v in body.items() if k != "reset_password"}},

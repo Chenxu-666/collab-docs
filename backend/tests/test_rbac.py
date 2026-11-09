@@ -4,6 +4,12 @@
 """
 import io
 
+from app.services.docx import make_minimal_docx
+
+
+def _docx(name="a.docx"):
+    return {"file": (name, make_minimal_docx("RBAC 测试"), "application/octet-stream")}
+
 
 def test_guest_list_only_published(client):
     """游客只能看到已发布文档。"""
@@ -26,19 +32,17 @@ def test_guest_preview_draft_404(client):
 
 
 def test_guest_upload_401(client):
-    r = client.post("/api/v1/documents", files={"file": ("a.docx", b"x", "application/octet-stream")})
+    r = client.post("/api/v1/documents", files=_docx())
     assert r.status_code == 401
 
 
 def test_user_upload_403(client, user_headers):
-    r = client.post("/api/v1/documents", files={"file": ("a.docx", b"x", "application/octet-stream")},
-                    headers=user_headers)
+    r = client.post("/api/v1/documents", files=_docx(), headers=user_headers)
     assert r.status_code == 403
 
 
 def test_admin_upload_ok(client, admin_headers):
-    r = client.post("/api/v1/documents", files={"file": ("test.docx", b"hello", "application/octet-stream")},
-                    headers=admin_headers)
+    r = client.post("/api/v1/documents", files=_docx("test.docx"), headers=admin_headers)
     assert r.status_code == 200
 
 
@@ -60,8 +64,7 @@ def test_super_list_accounts_ok(client, super_headers):
 
 def test_admin_permanent_delete_403(client, admin_headers, super_headers):
     """内容管理员不能彻底删除回收站内容（仅超管）。"""
-    r = client.post("/api/v1/documents", files={"file": ("d.docx", b"x", "application/octet-stream")},
-                    headers=admin_headers)
+    r = client.post("/api/v1/documents", files=_docx("d.docx"), headers=admin_headers)
     doc_id = r.json()["id"]
     client.delete(f"/api/v1/documents/{doc_id}", headers=admin_headers)
     rp = client.delete(f"/api/v1/documents/{doc_id}/permanent", headers=admin_headers)
@@ -84,4 +87,5 @@ def test_guest_albums_only_with_published(client):
 def _admin_of(client):
     """辅助：返回管理员请求头。"""
     r = client.post("/api/v1/auth/login", json={"username": "002", "password": "WENjing521"})
+    assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['access_token']}"}

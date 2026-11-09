@@ -1,6 +1,8 @@
 import re
+import zlib
 import zipfile
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 
 def _unescape(s: str) -> str:
@@ -25,6 +27,40 @@ def extract_text(data: bytes) -> str:
     return "\n".join(lines)
 
 
+def extract_pdf_text(data: bytes) -> str:
+    """从 PDF 提取文本；优先 pypdf，缺失时退化为流式解压的尽力提取。扫描件无文本层返回空串。"""
+    try:
+        from pypdf import PdfReader  # 可选依赖
+        return "\n".join((page.extract_text() or "") for page in PdfReader(BytesIO(data)).pages).strip()
+    except Exception:
+        return _extract_pdf_text_fallback(data)
+
+
+def _extract_pdf_text_fallback(data: bytes) -> str:
+    """无 pypdf 时的尽力提取：解压 FlateDecode 流并抽取文本括号内容。"""
+    try:
+        chunks = []
+        for m in re.finditer(rb"stream\r?\n(.*?)endstream", data, flags=re.S):
+            raw = m.group(1)
+            raw = raw.split(b"endstream")[0]
+            try:
+                raw = zlib.decompress(raw.strip(b"\r\n"))
+            except Exception:
+                continue
+            # 抽取 (text) 形式的内容，简单去转义
+            for t in re.findall(rb"\((.*?)\)", raw):
+                s = t.replace(b"\\(", b"(").replace(b"\\)", b")").replace(b"\\\\", b"\\")
+                s = re.sub(rb"\\[0-7]{1,3}", b"", s)
+                try:
+                    chunks.append(s.decode("utf-8", "ignore"))
+                except Exception:
+                    pass
+        text = "\n".join(chunks).strip()
+        return text if len(text) > 1 else ""
+    except Exception:
+        return ""
+
+
 def make_minimal_docx(text: str) -> bytes:
     """构造一个最小可被 Office 打开的 docx 文件（用于种子数据/演示）。"""
     content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -40,7 +76,7 @@ def make_minimal_docx(text: str) -> bytes:
 </Relationships>"""
 
     paras = "".join(
-        f"<w:p><w:r><w:t xml:space=\"preserve\">{line}</w:t></w:r></w:p>"
+        f"<w:p><w:r><w:t xml:space=\"preserve\">{escape(line)}</w:t></w:r></w:p>"
         for line in text.split("\n")
     )
     document = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

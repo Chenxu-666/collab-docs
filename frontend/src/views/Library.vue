@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import api from '@/api'
+import { publicApi } from '@/api'
 
 const albums = ref<any[]>([])
 const images = ref<any[]>([])
@@ -17,7 +17,7 @@ const filtered = computed(() =>
 
 async function load() {
   try {
-    const [a, im] = await Promise.all([api.get('/albums'), api.get('/images')])
+    const [a, im] = await Promise.all([publicApi.get('/albums'), publicApi.get('/images')])
     albums.value = a.data
     images.value = im.data
     images.value.forEach((img: any) => loadThumb(img))
@@ -26,7 +26,7 @@ async function load() {
 
 async function loadThumb(img: any) {
   try {
-    const res = await api.get(`/images/${img.id}/thumb`, { responseType: 'blob' })
+    const res = await publicApi.get(`/images/${img.id}/thumb`, { responseType: 'blob' })
     thumbs.value[img.id] = URL.createObjectURL(res.data)
   } catch { /* ignore */ }
 }
@@ -37,7 +37,7 @@ async function openLb(i: number) {
   lbUrl.value = ''
   const img = filtered.value[i]
   try {
-    const res = await api.get(`/images/${img.id}/file`, { responseType: 'blob' })
+    const res = await publicApi.get(`/images/${img.id}/file`, { responseType: 'blob' })
     lbUrl.value = URL.createObjectURL(res.data)
   } catch { /* ignore */ }
 }

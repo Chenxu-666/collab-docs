@@ -107,6 +107,9 @@ async def upload_images(
 ):
     created = []
     failed = []
+    if album_id is not None and db.get(Album, album_id) is None:
+        failed.append({"name": "", "reason": "指定的相册不存在"})
+        return {"created": created, "failed": failed}
     for f in files:
         fn = f.filename or "未命名"
         title = fn.rsplit(".", 1)[0] if "." in fn else fn
@@ -144,7 +147,10 @@ def get_thumb(img_id: int, user: User | None = Depends(get_current_user_optional
         raise HTTPException(404, "图片不存在")
     rel = img.thumb_path or img.file_path
     data = storage.read(rel)
-    return Response(content=data, media_type="image/webp")
+    ext = rel.rsplit(".", 1)[-1].lower()
+    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/webp")
+    return Response(content=data, media_type=mime)
 
 
 @router.get("/images/{img_id}/file")
@@ -174,6 +180,8 @@ def update_image(img_id: int, body: dict, admin: User = Depends(require_admin),
     if "description" in body:
         img.description = (body["description"] or "")[:500]
     if "album_id" in body:
+        if body["album_id"] is not None and db.get(Album, body["album_id"]) is None:
+            raise HTTPException(400, "指定的相册不存在")
         img.album_id = body["album_id"]
     if "sort_order" in body:
         img.sort_order = int(body["sort_order"])
@@ -249,6 +257,13 @@ def permanent_delete(img_id: int, admin: User = Depends(require_super_admin),
     name = img.title
     record_audit(db, admin, "permanent_delete", "image", img_id, name,
                  ip=request.client.host if request else "")
+    rel_paths = {img.file_path, img.thumb_path}
     db.delete(img)
     db.commit()
+    for rel in rel_paths:
+        if rel:
+            try:
+                storage.delete(rel)
+            except Exception:
+                pass
     return {"message": "已彻底删除"}

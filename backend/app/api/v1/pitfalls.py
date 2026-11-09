@@ -136,8 +136,8 @@ def create_pitfall(body: dict, admin: User = Depends(require_admin),
         related_image_ids=json.dumps(_related_ids(body.get("related_image_ids", []))),
         related_document_ids=json.dumps(_related_ids(body.get("related_document_ids", []))),
         status=STATUS_DRAFT,
-        sort_order=int(body.get("sort_order", 0)),
-        is_pinned=bool(body.get("is_pinned", False)),
+        sort_order=_to_int(body.get("sort_order", 0), "排序值必须为数字"),
+        is_pinned=_to_bool(body.get("is_pinned", False)),
         created_by=admin.id,
     )
     db.add(p)
@@ -164,13 +164,28 @@ def update_pitfall(pit_id: int, body: dict, admin: User = Depends(require_admin)
     if "related_document_ids" in body:
         p.related_document_ids = json.dumps(_related_ids(body["related_document_ids"]))
     if "sort_order" in body:
-        p.sort_order = int(body["sort_order"])
+        p.sort_order = _to_int(body["sort_order"], "排序值必须为数字")
     if "is_pinned" in body:
-        p.is_pinned = bool(body["is_pinned"])
+        p.is_pinned = _to_bool(body["is_pinned"])
     record_audit(db, admin, "edit", "pitfall", p.id, p.title,
                  ip=request.client.host if request else "")
     db.commit()
     return _pit_out(p, db, True)
+
+
+def _to_int(value, msg: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(400, msg)
+
+
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
 
 
 def _transition(p: Pitfall, action: str, admin: User, db: Session, request: Request) -> dict:
@@ -226,6 +241,15 @@ def restore_pitfall(pit_id: int, admin: User = Depends(require_admin),
     if p is None:
         raise HTTPException(404, "避坑项不存在")
     return _transition(p, "restore", admin, db, request)
+
+
+@router.post("/{pit_id}/archive")
+def archive_pitfall(pit_id: int, admin: User = Depends(require_admin),
+                    db: Session = Depends(get_db), request: Request = None):
+    p = db.get(Pitfall, pit_id)
+    if p is None:
+        raise HTTPException(404, "避坑项不存在")
+    return _transition(p, "archive", admin, db, request)
 
 
 @router.delete("/{pit_id}/permanent")

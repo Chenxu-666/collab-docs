@@ -52,19 +52,21 @@ def trends(days: int = 30, admin: User = Depends(require_admin), db: Session = D
     rows = db.execute(
         select(AuditLog.action, AuditLog.created_at).where(AuditLog.created_at >= start)
     ).all()
+    # 按完整日期键聚合，避免跨年时按 "%m-%d" 字符串排序错乱。
     buckets = {}
     for i in range(days):
-        d = (datetime.now() - timedelta(days=i)).strftime("%m-%d")
+        d = (datetime.now() - timedelta(days=i)).date()
         buckets[d] = {"publish": 0, "edit": 0, "upload": 0}
     for action, created in rows:
         if action not in ("publish", "edit", "upload"):
             continue
-        d = created.strftime("%m-%d")
+        d = created.date()
         if d in buckets:
             buckets[d][action] += 1
     ordered = sorted(buckets.keys())
+    labels = [d.strftime("%m-%d") for d in ordered]
     return {
-        "labels": ordered,
+        "labels": labels,
         "publish": [buckets[d]["publish"] for d in ordered],
         "edit": [buckets[d]["edit"] for d in ordered],
         "upload": [buckets[d]["upload"] for d in ordered],

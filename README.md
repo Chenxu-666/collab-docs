@@ -6,7 +6,7 @@
 
 - 🔐 四级权限：超级管理员 / 内容管理员 / 普通用户（审批后只读）/ 游客
 - 📝 自助注册：公开注册 → 待审批 → 超级管理员通过/拒绝
-- 📄 文档管理：上传（docx/doc/wps/pdf）、在线协同编辑（OnlyOffice，可选）、版本回滚、下载（仅管理员）
+- 📄 文档管理：上传（docx/pdf）、在线协同编辑（OnlyOffice，可选）、版本回滚、下载（仅管理员）
 - 🖼️ 图片库：相册分类、等比网格、灯箱大图、批量上传
 - ⚠️ 避坑项：阶段/分类/风险等级、置顶、关联图片与文档、逐条维护
 - 🚀 发布工作流：草稿 / 已发布 / 已归档，撤回即时生效
@@ -64,7 +64,7 @@ npm run dev
 ## 启用 OnlyOffice 协同编辑
 
 1. `docker compose up -d onlyoffice`
-2. 在后端 `.env` 配置 `ONLYOFFICE_URL=http://localhost:8888` 与 `APP_BASE_URL=http://localhost:8000`
+2. 在后端 `.env` 配置 `ONLYOFFICE_URL=http://localhost:8888`、`APP_BASE_URL=http://localhost:8000`，并设置长度不少于 32 字符的 `ONLYOFFICE_SECRET`（回调需 JWT 校验）
 3. 未配置时，编辑页自动降级为提示 + 下载。
 
 ## Docker 全量部署

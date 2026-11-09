@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -51,11 +52,14 @@ for r in (auth.router, stats.router, documents.router, onlyoffice.router,
 
 @app.get("/api/health")
 def health():
-    db_ok = True
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         db.execute(text("SELECT 1"))
-        db.close()
     except Exception:
-        db_ok = False
-    return {"status": "ok", "database": "up" if db_ok else "down", "version": "2.0.0"}
+        return JSONResponse(
+            status_code=503,
+            content={"status": "down", "database": "down", "version": "2.0.0"},
+        )
+    finally:
+        db.close()
+    return {"status": "ok", "database": "up", "version": "2.0.0"}

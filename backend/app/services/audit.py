@@ -26,4 +26,5 @@ def record_audit(
         ip=ip or "",
     )
     db.add(log)
-    db.commit()
+    # 审计日志与业务修改属于同一事务，由路由统一提交，避免提前提交半成品数据。
+    db.flush()

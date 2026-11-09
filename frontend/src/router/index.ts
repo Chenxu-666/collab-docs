@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { readStoredUser } from '@/utils/session'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('@/views/Login.vue'), meta: { public: true } },
     { path: '/register', name: 'register', component: () => import('@/views/Register.vue'), meta: { public: true } },
+    { path: '/change-password', name: 'change-password', component: () => import('@/views/ChangePassword.vue'), meta: { requiresAuth: true } },
     {
       path: '/',
       component: () => import('@/layouts/PublicLayout.vue'),
@@ -40,7 +42,11 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const token = localStorage.getItem('cd_token')
-  const user = JSON.parse(localStorage.getItem('cd_user') || 'null')
+  const user = readStoredUser()
+  if (to.meta.requiresAuth) {
+    if (!token) return { name: 'login', query: { redirect: to.fullPath } }
+    if (user?.must_change_pwd && to.name !== 'change-password') return { name: 'change-password' }
+  }
   if (to.meta.requiresAdmin) {
     if (!token) return { name: 'login', query: { redirect: to.fullPath } }
     if (user?.role !== 'admin' && user?.role !== 'super_admin') return { name: 'home' }

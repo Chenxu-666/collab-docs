@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '@/api'
+import { readStoredUser } from '@/utils/session'
 
 interface UserInfo {
   id: number
@@ -14,14 +15,16 @@ interface UserInfo {
 export const useUserStore = defineStore('user', {
   state: () => ({
     token: localStorage.getItem('cd_token') || '',
-    user: JSON.parse(localStorage.getItem('cd_user') || 'null') as UserInfo | null,
+    user: readStoredUser(),
     viewMode: 'admin' as 'admin' | 'user'
   }),
   getters: {
     isSuperAdmin: (s) => s.user?.role === 'super_admin',
     isAdmin: (s) => s.user?.role === 'admin' || s.user?.role === 'super_admin',
     isLoggedIn: (s) => !!s.token,
-    isUserView: (s) => s.isAdmin && s.viewMode === 'user'
+    isUserView(): boolean {
+      return this.isAdmin && this.viewMode === 'user'
+    }
   },
   actions: {
     async login(username: string, password: string) {

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import ROLE_ADMIN, ROLE_SUPER_ADMIN, User
-from .security import decode_token
+from .security import decode_token, password_stamp_matches
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -16,9 +16,24 @@ def _resolve_user(cred: HTTPAuthorizationCredentials | None, db: Session) -> Use
         payload = decode_token(cred.credentials)
     except Exception:
         return None
-    user = db.get(User, int(payload["sub"]))
-    if user is None:
+    try:
+        user = db.get(User, int(payload["sub"]))
+    except (KeyError, TypeError, ValueError):
         return None
+    if user is None or not password_stamp_matches(payload, user.password_hash):
+        return None
+    return user
+
+
+def _authenticated_user(cred: HTTPAuthorizationCredentials | None, db: Session,
+                        allow_password_change: bool = False) -> User:
+    user = _resolve_user(cred, db)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "未登录或登录已过期")
+    if user.status != "active":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "账号未激活或已停用")
+    if user.must_change_pwd and not allow_password_change:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "请先修改初始密码")
     return user
 
 
@@ -26,12 +41,14 @@ def get_current_user(
     cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> User:
-    user = _resolve_user(cred, db)
-    if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "未登录或登录已过期")
-    if user.status != "active":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "账号未激活或已停用")
-    return user
+    return _authenticated_user(cred, db)
+
+
+def get_current_user_for_password_change(
+    cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> User:
+    return _authenticated_user(cred, db, allow_password_change=True)
 
 
 def get_current_user_optional(

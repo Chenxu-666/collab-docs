@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...core.deps import get_current_user
+from ...core.deps import get_current_user, get_current_user_for_password_change
 from ...core.ratelimit import login_limiter, register_limiter
 from ...core.security import create_access_token, hash_password, verify_password
 from ...db import get_db
@@ -34,6 +34,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db), request: Request = 
         record_audit(db, None, "login_failed", "account", object_name=body.username,
                      detail={"reason": "bad_credentials"},
                      ip=ip)
+        db.commit()
         raise HTTPException(401, "账号或密码错误")
     if user.status == USER_PENDING:
         raise HTTPException(403, "账号正在等待管理员审批，请耐心等待")
@@ -42,9 +43,10 @@ def login(body: LoginRequest, db: Session = Depends(get_db), request: Request = 
     if user.status == "disabled":
         raise HTTPException(403, "账号已停用，请联系管理员")
     login_limiter.reset(key)
-    token = create_access_token(user.id, user.role)
+    token = create_access_token(user.id, user.role, user.password_hash)
     record_audit(db, user, "login", "account", user.id, user.username,
                  ip=ip)
+    db.commit()
     return {
         "access_token": token,
         "must_change_pwd": user.must_change_pwd,
@@ -59,6 +61,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db), request: Requ
     locked, remain = register_limiter.is_locked(f"register:{ip}")
     if locked:
         raise HTTPException(429, f"操作过于频繁，请 {remain} 秒后再试")
+    register_limiter.record_failure(f"register:{ip}")
     username = body.username.strip()
     if not _USERNAME_RE.match(username):
         raise HTTPException(400, "账号需为 3-32 位字母、数字、下划线、点或横线")
@@ -81,6 +84,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db), request: Requ
     record_audit(db, None, "register", "account", u.id, username,
                  detail={"display_name": display_name},
                  ip=request.client.host if request else "")
+    db.commit()
     return {"message": "注册成功，请等待超级管理员审批"}
 
 
@@ -92,7 +96,7 @@ def me(user: User = Depends(get_current_user)):
 @router.post("/change-password")
 def change_password(
     body: ChangePasswordRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_for_password_change),
     db: Session = Depends(get_db),
 ):
     if not verify_password(body.old_password, user.password_hash):

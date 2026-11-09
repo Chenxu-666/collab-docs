@@ -1,10 +1,14 @@
 import io
 import json
+import logging
 
 from PIL import Image as PILImage, ImageDraw, ImageFont
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .core.config import (
+    ENV, INITIAL_SUPER_ADMIN_NAME, INITIAL_SUPER_ADMIN_PASSWORD, INITIAL_SUPER_ADMIN_USERNAME,
+)
 from .core.security import hash_password
 from .models import (
     ROLE_ADMIN, ROLE_SUPER_ADMIN, STATUS_DRAFT, STATUS_PUBLISHED,
@@ -40,7 +44,26 @@ def seed_if_empty(db: Session):
     if db.execute(select(User).limit(1)).scalar_one_or_none():
         return
 
-    # 账号：超级管理员 001 / 内容管理员 002
+    if ENV == "prod":
+        # 生产环境绝不创建公开固定账号；管理员需由部署者显式提供一次性初始凭据。
+        if not INITIAL_SUPER_ADMIN_USERNAME or len(INITIAL_SUPER_ADMIN_PASSWORD) < 12:
+            logging.getLogger("app.seed").warning(
+                "空生产数据库未初始化管理员：请设置 INITIAL_SUPER_ADMIN_USERNAME "
+                "和至少 12 位的 INITIAL_SUPER_ADMIN_PASSWORD 后首次启动"
+            )
+            return
+        db.add(User(
+            username=INITIAL_SUPER_ADMIN_USERNAME,
+            display_name=INITIAL_SUPER_ADMIN_NAME,
+            password_hash=hash_password(INITIAL_SUPER_ADMIN_PASSWORD),
+            role=ROLE_SUPER_ADMIN,
+            status="active",
+            must_change_pwd=True,
+        ))
+        db.commit()
+        return
+
+    # 仅开发环境创建演示账号与示例内容。
     super_admin = User(username="001", display_name="陈总",
                        password_hash=hash_password("WENjing970217"),
                        role=ROLE_SUPER_ADMIN, status="active")

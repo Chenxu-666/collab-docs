@@ -13,6 +13,8 @@ const statusFilter = ref('')
 const showUpload = ref(false)
 const upFiles = ref<File[]>([])
 const upAlbum = ref<number | null>(null)
+const uploading = ref(false)
+const imgInput = ref<HTMLInputElement | null>(null)
 
 const showAlbum = ref(false)
 const newAlbumName = ref('')
@@ -54,12 +56,20 @@ async function doUpload() {
   const fd = new FormData()
   upFiles.value.forEach((f) => fd.append('files', f))
   if (upAlbum.value) fd.append('album_id', String(upAlbum.value))
+  uploading.value = true
   try {
-    const { data } = await api.post('/images', fd)
-    ui.toast(`已上传 ${data.created.length} 张图片（草稿状态）`)
+    const { data } = await api.post('/images', fd, { timeout: 0 })
+    if (data.failed && data.failed.length) {
+      const msgs = data.failed.map((f: any) => `${f.name}：${f.reason}`).join('；')
+      ui.toast(`部分图片上传失败（${msgs}）`, 'error')
+    } else if (data.created && data.created.length) {
+      ui.toast(`已上传 ${data.created.length} 张图片（草稿状态）`)
+    } else {
+      ui.toast('没有图片被成功上传', 'error')
+    }
     showUpload.value = false; upFiles.value = []
     await load()
-  } catch (e: any) { ui.toast(e.message, 'error') }
+  } catch (e: any) { ui.toast(e.message, 'error') } finally { uploading.value = false }
 }
 
 async function createAlbum() {
@@ -89,7 +99,8 @@ async function act(img: any, action: string) {
   if (action === 'trash' && !confirm(`确认删除图片「${img.title}」？将进入回收站。`)) return
   try {
     const method = action === 'trash' ? 'delete' : 'post'
-    await api[method](`/images/${img.id}/${action === 'trash' ? '' : action}`)
+    const url = action === 'trash' ? `/images/${img.id}` : `/images/${img.id}/${action}`
+    await api[method](url)
     ui.toast(action === 'publish' ? '已发布' : action === 'withdraw' ? '已撤回' : '已删除')
     await load()
   } catch (e: any) { ui.toast(e.message, 'error') }
@@ -171,12 +182,12 @@ onMounted(load)
       <div class="modal">
         <div class="modal-head"><b>上传图片</b><button class="icon-btn" @click="showUpload = false">✕</button></div>
         <div class="modal-body">
-          <div class="up-zone" @click="$refs.imgInput.click()">
+          <div class="up-zone" @click="imgInput?.click()">
             <span class="big">🖼️</span>
             <div>{{ upFiles.length ? `已选择 ${upFiles.length} 张` : '点击选择（支持批量）' }}</div>
             <div class="fmt">jpg / png / webp / gif，单张 ≤ 20MB</div>
           </div>
-          <input ref="imgInput" type="file" accept="image/*" multiple style="display:none" @change="onPickFiles" />
+          <input ref="imgInput" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif" multiple style="display:none" @change="onPickFiles" />
           <div class="field" style="margin-top:16px"><label>归属相册</label>
             <select v-model="upAlbum" class="select">
               <option :value="null">未分类</option>
@@ -186,7 +197,7 @@ onMounted(load)
         </div>
         <div class="modal-foot">
           <button class="btn btn-ghost" @click="showUpload = false">取消</button>
-          <button class="btn btn-primary" :disabled="!upFiles.length" @click="doUpload">确认上传</button>
+          <button class="btn btn-primary" :disabled="!upFiles.length || uploading" @click="doUpload">{{ uploading ? '上传中…' : '确认上传' }}</button>
         </div>
       </div>
     </div>
